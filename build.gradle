@@ -1,0 +1,26 @@
+group = 'ru.leonidm'
+version = '1.0-SNAPSHOT'
+
+subprojects {
+    apply plugin: 'java'
+
+    repositories {
+        mavenCentral()
+    }
+
+    dependencies {
+        implementation 'org.jspecify:jspecify:1.0.0'
+    }
+
+    java {
+        toolchain {
+            languageVersion.set(JavaLanguageVersion.of(21))
+        }
+    }
+
+    jar {
+        manifest {
+            attributes 'Main-Class': 'ru.leonidm.parallel.lab1.Lab1'
+        }
+    }
+}
