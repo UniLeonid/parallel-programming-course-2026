@@ -17,10 +17,4 @@ subprojects {
             languageVersion.set(JavaLanguageVersion.of(21))
         }
     }
-
-    jar {
-        manifest {
-            attributes 'Main-Class': 'ru.leonidm.parallel.lab1.Lab1'
-        }
-    }
 }
