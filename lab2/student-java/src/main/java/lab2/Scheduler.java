@@ -26,6 +26,8 @@ public final class Scheduler {
     private final Semaphore schedulerTurn = new Semaphore(0);
     private final List<Worker> workers = new ArrayList<>();
     private final StringBuilder trace = new StringBuilder();
+    private final List<SchedLock> locks = new ArrayList<>();
+    private boolean aborted;
 
     public Scheduler() {
     }
@@ -43,47 +45,51 @@ public final class Scheduler {
             schedulerTurn.acquireUninterruptibly();
         }
 
-        int lastPicked = -1;
-        while (true) {
-            List<Integer> enabled = new ArrayList<>();
-            boolean anyAlive = false;
+        try {
+            int lastPicked = -1;
+            while (true) {
+                List<Integer> enabled = new ArrayList<>();
+                boolean anyAlive = false;
+                for (Worker w : workers) {
+                    if (!w.finished) {
+                        anyAlive = true;
+                    }
+                    if (w.enabled()) {
+                        enabled.add(w.id);
+                    }
+                }
+
+                if (!anyAlive) {
+                    break;
+                }
+
+                if (enabled.isEmpty()) {
+                    deadlock = heldLocks();
+                    break;
+                }
+
+                int next = strategy.pick(enabled, lastPicked);
+                if (!enabled.contains(next)) {
+                    throw new IllegalStateException("Strategy picked #%s, however enabled %s".formatted(next, enabled));
+                }
+
+                Worker w = workers.get(next);
+                trace.append(w.letter);
+                lastPicked = next;
+
+                w.readyWhen = null;
+                w.turn.release();
+                schedulerTurn.acquireUninterruptibly();
+            }
+        } finally {
+            abortUnfinished();
             for (Worker w : workers) {
-                if (!w.finished) {
-                    anyAlive = true;
+                try {
+                    w.thread.join();
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException(e);
                 }
-                if (w.enabled()) {
-                    enabled.add(w.id);
-                }
-            }
-
-            if (!anyAlive) {
-                break;
-            }
-
-            if (enabled.isEmpty()) {
-                throw new UnsupportedOperationException("TODO этап 2: deadlock");
-            }
-
-            int next = strategy.pick(enabled, lastPicked);
-            if (!enabled.contains(next)) {
-                throw new IllegalStateException("Strategy picked #%s, however enabled %s".formatted(next, enabled));
-            }
-
-            Worker w = workers.get(next);
-            trace.append(w.letter);
-            lastPicked = next;
-
-            w.readyWhen = null;
-            w.turn.release();
-            schedulerTurn.acquireUninterruptibly();
-        }
-
-        for (Worker w : workers) {
-            try {
-                w.thread.join();
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new IllegalStateException(e);
             }
         }
 
@@ -107,6 +113,7 @@ public final class Scheduler {
         CURRENT.set(w);
         try {
             w.body.run();
+        } catch (Aborted ignored) {
         } catch (Throwable t) {
             w.failure = t;
         } finally {
@@ -120,8 +127,32 @@ public final class Scheduler {
         return trace.toString();
     }
 
+    void registerLock(SchedLock lock) {
+        locks.add(lock);
+    }
+
+    private String heldLocks() {
+        List<String> held = new ArrayList<>();
+        for (SchedLock lock : locks) {
+            if (lock.owner >= 0) {
+                held.add(lock.name + ":" + workers.get(lock.owner).letter);
+            }
+        }
+
+        return "held={" + String.join(", ", held) + "}";
+    }
+
+    private void abortUnfinished() {
+        aborted = true;
+        for (Worker w : workers) {
+            if (!w.finished) {
+                w.turn.release();
+            }
+        }
+    }
+
     private void record(Worker w, String operation) {
-        if (logging) {
+        if (logging && !aborted) {
             log.add(w.letter + "  " + operation);
         }
     }
@@ -137,11 +168,15 @@ public final class Scheduler {
 
     /** Ждать, пока cond не станет true. До этого поток не попадает в enabled. */
     public static void await(BooleanSupplier cond) {
+        pauseUntil(cond);
+        log("await done");
+    }
+
+    static void pauseUntil(BooleanSupplier ready) {
         Worker w = current();
-        if (w.needPause || !cond.getAsBoolean()) {
-            pause(w, cond);
+        if (w.needPause || !ready.getAsBoolean()) {
+            pause(w, ready);
         }
-        w.owner.record(w, "await done");
         w.needPause = true;
     }
 
@@ -153,6 +188,10 @@ public final class Scheduler {
         w.needPause = true;
     }
 
+    static int currentId() {
+        return current().id;
+    }
+
     static void log(String operation) {
         Worker w = current();
         w.owner.record(w, operation);
@@ -162,6 +201,10 @@ public final class Scheduler {
         w.readyWhen = readyWhen;
         w.owner.schedulerTurn.release();
         w.turn.acquireUninterruptibly();
+
+        if (w.owner.aborted) {
+            throw new Aborted();
+        }
         w.needPause = false;
     }
 
@@ -171,6 +214,12 @@ public final class Scheduler {
             throw new IllegalStateException("not a scheduler thread");
         }
         return w;
+    }
+
+    private static final class Aborted extends RuntimeException {
+        public Aborted() {
+            super(null, null, false, false);
+        }
     }
 
     private static final class Worker {

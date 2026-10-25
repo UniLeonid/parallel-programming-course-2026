@@ -641,7 +641,7 @@ mode=volatile samples=2,000,000
 - Операционная система и версия ядра: `Windows 10 IoT Enterprise LTSC 2021, 10.0.19044`
 - Версия компилятора / JDK: `OpenJDK 21.0.2`
 - (C++) Предупреждений TSan на командах этапов 2 и 4: `...`
-- Этапы 1–2: вывод `withdraw-v0 first`, `withdraw-v1 first`, `transfer replay AB` совпал с методичкой (да / нет): `...`
+- Этапы 1–2: вывод `withdraw-v0 first`, `withdraw-v1 first`, `transfer replay AB` совпал с методичкой (да / нет): `да`
 
 ### 2. Результаты этапов 0–5
 

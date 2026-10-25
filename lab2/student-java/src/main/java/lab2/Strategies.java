@@ -17,13 +17,32 @@ public final class Strategies {
 
     /** Проигрывает трассу: на i-м решении выбирает поток trace[i] ('A' -> 0, 'B' -> 1). */
     public static final class Replay implements Strategy {
-        public Replay(String trace) { }
+        private final String trace;
+        private int position;
+
+        public Replay(String trace) {
+            this.trace = trace;
+        }
 
         /** Сбросить позицию в трассе перед прогоном. */
-        public void beginRun() { }
+        public void beginRun() {
+            position = 0;
+        }
 
         public int pick(List<Integer> enabled, int last) {
-            throw new UnsupportedOperationException("TODO этап 2: Replay.pick");
+            if (position >= trace.length()) {
+                throw new IllegalStateException("trace '%s', position %s: out of bounds".formatted(trace, position));
+            }
+
+            char letter = trace.charAt(position);
+            int id = letter - 'A';
+            if (!enabled.contains(id)) {
+                throw new IllegalStateException("trace '%s', position %s: thread '%s' is not enabled"
+                        .formatted(trace, position, letter));
+            }
+
+            position++;
+            return id;
         }
     }
 
