@@ -1,5 +1,6 @@
 package lab2;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Random;
 
@@ -63,18 +64,54 @@ public final class Strategies {
     /** Stateless DFS по дереву выборов: каждый прогон с нуля, повторяет префикс прошлого и берёт следующий вариант.
      *  bound — максимум вытеснений (этап 5); для dfs runner передаёт Integer.MAX_VALUE. */
     public static final class Dfs implements Strategy {
+        private final List<Node> path = new ArrayList<>();
+        private int depth;
+
         public Dfs(int bound) { }
 
         /** Подготовиться к новому прогону (позиция в пути, счётчик вытеснений). */
-        public void beginRun() { }
+        public void beginRun() {
+            depth = 0;
+        }
 
         public int pick(List<Integer> enabled, int last) {
-            throw new UnsupportedOperationException("TODO этап 4: Dfs.pick");
+            Node node;
+            if (depth < path.size()) {
+                node = path.get(depth);
+                if (!node.enabled.equals(enabled)) {
+                    throw new IllegalStateException("bad state at depth %s: expected %s, got %s"
+                            .formatted(depth, node.enabled, enabled));
+                }
+            } else {
+                node = new Node(List.copyOf(enabled));
+                path.add(node);
+            }
+
+            depth++;
+            return node.enabled.get(node.chosenIndex);
         }
 
         /** Выбрать следующий путь; false — дерево обойдено. */
         public boolean endRun() {
-            throw new UnsupportedOperationException("TODO этап 4: Dfs.endRun");
+            while (!path.isEmpty()) {
+                Node node = path.getLast();
+                if (node.chosenIndex + 1 < node.enabled.size()) {
+                    node.chosenIndex++;
+                    return true;
+                }
+
+                path.removeLast();
+            }
+            return false;
+        }
+
+        private static final class Node {
+            private final List<Integer> enabled;
+            private int chosenIndex;
+
+            Node(List<Integer> enabled) {
+                this.enabled = enabled;
+            }
         }
     }
 }
