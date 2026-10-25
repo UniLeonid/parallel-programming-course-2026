@@ -65,13 +65,18 @@ public final class Strategies {
      *  bound — максимум вытеснений (этап 5); для dfs runner передаёт Integer.MAX_VALUE. */
     public static final class Dfs implements Strategy {
         private final List<Node> path = new ArrayList<>();
+        private final int bound;
         private int depth;
+        private int preemptions;
 
-        public Dfs(int bound) { }
+        public Dfs(int bound) {
+            this.bound = bound;
+        }
 
         /** Подготовиться к новому прогону (позиция в пути, счётчик вытеснений). */
         public void beginRun() {
             depth = 0;
+            preemptions = 0;
         }
 
         public int pick(List<Integer> enabled, int last) {
@@ -83,19 +88,24 @@ public final class Strategies {
                             .formatted(depth, node.enabled, enabled));
                 }
             } else {
-                node = new Node(List.copyOf(enabled));
+                node = new Node(List.copyOf(enabled), allowedOptions(enabled, last));
                 path.add(node);
             }
 
+            int next = node.options.get(node.chosenIndex);
+            if (isPreemption(enabled, last, next)) {
+                preemptions++;
+            }
+
             depth++;
-            return node.enabled.get(node.chosenIndex);
+            return next;
         }
 
         /** Выбрать следующий путь; false — дерево обойдено. */
         public boolean endRun() {
             while (!path.isEmpty()) {
                 Node node = path.getLast();
-                if (node.chosenIndex + 1 < node.enabled.size()) {
+                if (node.chosenIndex + 1 < node.options.size()) {
                     node.chosenIndex++;
                     return true;
                 }
@@ -105,12 +115,33 @@ public final class Strategies {
             return false;
         }
 
+        private List<Integer> allowedOptions(List<Integer> enabled, int last) {
+            List<Integer> options = new ArrayList<>();
+            for (int option : enabled) {
+                if (isPreemption(enabled, last, option)) {
+                    if (preemptions < bound) {
+                        options.add(option);
+                    }
+                } else {
+                    options.add(option);
+                }
+            }
+
+            return options;
+        }
+
+        private boolean isPreemption(List<Integer> enabled, int last, int next) {
+            return last >= 0 && next != last && enabled.contains(last);
+        }
+
         private static final class Node {
             private final List<Integer> enabled;
+            private final List<Integer> options;
             private int chosenIndex;
 
-            Node(List<Integer> enabled) {
+            Node(List<Integer> enabled, List<Integer> options) {
                 this.enabled = enabled;
+                this.options = options;
             }
         }
     }
